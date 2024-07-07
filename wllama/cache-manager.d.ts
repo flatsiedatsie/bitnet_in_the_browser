@@ -13,19 +13,31 @@ export interface CacheEntry {
  */
 export declare const CacheManager: {
     /**
-     * Write a new file to cache. This will overwrite existing file.
+     * Convert a given URL into file name in cache.
+     *
+     * Format of the file name: `${hashSHA1(fullURL)}_${fileName}`
      */
-    write(key: string, stream: ReadableStream): Promise<void>;
+    getNameFromURL(url: string): Promise<string>;
+    /**
+     * Write a new file to cache. This will overwrite existing file.
+     *
+     * @param name The file name returned by `getNameFromURL()` or `list()`
+     */
+    write(name: string, stream: ReadableStream): Promise<void>;
     /**
      * Open a file in cache for reading
+     *
+     * @param name The file name returned by `getNameFromURL()` or `list()`
      * @returns ReadableStream, or null if file does not exist
      */
-    open(key: string): Promise<ReadableStream | null>;
+    open(name: string): Promise<ReadableStream | null>;
     /**
      * Get the size of a file in cache
+     *
+     * @param name The file name returned by `getNameFromURL()` or `list()`
      * @returns number of bytes, or -1 if file does not exist
      */
-    getSize(key: string): Promise<number>;
+    getSize(name: string): Promise<number>;
     /**
      * List all files currently in cache
      */
@@ -34,4 +46,16 @@ export declare const CacheManager: {
      * Clear all files currently in cache
      */
     clear(): Promise<void>;
+    /**
+     * Delete a single file in cache
+     *
+     * @param nameOrURL Can be either an URL or a name returned by `getNameFromURL()` or `list()`
+     */
+    delete(nameOrURL: string): Promise<void>;
+    /**
+     * Delete multiple files in cache.
+     *
+     * @param predicate A predicate like `array.filter(item => boolean)`
+     */
+    deleteMany(predicate: (e: CacheEntry) => boolean): Promise<void>;
 };

@@ -9,6 +9,7 @@ import { MultiDownloads } from './downloader/multi-downloads.js';
 ;
 ;
 ;
+;
 /**
  * Logger preset with debug messages suppressed
  */
@@ -39,6 +40,17 @@ export class Wllama {
     }
     logger() {
         return this.config.logger ?? console;
+    }
+    checkModelLoaded() {
+        if (!this.isModelLoaded()) {
+            throw new Error('loadModel() is not yet called');
+        }
+    }
+    /**
+     * Check if the model is loaded via `loadModel()`
+     */
+    isModelLoaded() {
+        return !!this.proxy && !!this.metadata;
     }
     /**
      * Get token ID associated to BOS (begin of sentence) token.
@@ -78,9 +90,7 @@ export class Wllama {
      * @returns ModelMetadata
      */
     getModelMetadata() {
-        if (!this.metadata) {
-            throw new Error('loadModel() is not yet called');
-        }
+        this.checkModelLoaded();
         return this.metadata;
     }
     /**
@@ -91,6 +101,7 @@ export class Wllama {
      * @returns true if multi-thread is used.
      */
     isMultithread() {
+        this.checkModelLoaded();
         return this.useMultiThread;
     }
     /**
@@ -220,14 +231,12 @@ export class Wllama {
      * @returns An embedding vector
      */
     async createEmbedding(text, options = {}) {
+        this.checkModelLoaded();
         const opt = {
             skipBOS: false,
             skipEOS: false,
             ...options,
         };
-        if (!this.useEmbeddings) {
-            throw new Error('embeddings is not enabled in LoadModelConfig');
-        }
         await this.samplingInit(this.samplingConfig);
         await this.kvClear();
         const tokens = await this.tokenize(text);
@@ -247,6 +256,7 @@ export class Wllama {
      * @returns Output completion text (only the completion part)
      */
     async createCompletion(prompt, options) {
+        this.checkModelLoaded();
         this.samplingConfig = options.sampling ?? {};
         await this.samplingInit(this.samplingConfig);
         await this.kvClear(); // TODO: maybe cache tokens?
@@ -292,6 +302,7 @@ export class Wllama {
      * @param pastTokens In case re-initializing the ctx_sampling, you can re-import past tokens into the new context
      */
     async samplingInit(config, pastTokens = []) {
+        this.checkModelLoaded();
         this.samplingConfig = config;
         const result = await this.proxy.wllamaAction('sampling_init', {
             ...config,
@@ -307,6 +318,7 @@ export class Wllama {
      * @returns A list of Uint8Array. The nth element in the list associated to nth token in vocab
      */
     async getVocab() {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('get_vocab', {});
         return result.vocab.map((arr) => new Uint8Array(arr));
     }
@@ -317,6 +329,7 @@ export class Wllama {
      * @returns Token ID associated to the given piece. Returns -1 if cannot find the token.
      */
     async lookupToken(piece) {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('lookup_token', { piece });
         if (!result.success) {
             return -1;
@@ -332,6 +345,7 @@ export class Wllama {
      * @returns List of token ID
      */
     async tokenize(text, special = true) {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('tokenize', special
             ? { text, special: true }
             : { text });
@@ -343,6 +357,7 @@ export class Wllama {
      * @returns Uint8Array, which maybe an unfinished unicode
      */
     async detokenize(tokens) {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('detokenize', { tokens });
         return new Uint8Array(result.buffer);
     }
@@ -353,6 +368,10 @@ export class Wllama {
      * @returns n_past (number of tokens so far in the sequence)
      */
     async decode(tokens, options) {
+        this.checkModelLoaded();
+        if (this.useEmbeddings) {
+            throw new Error('embeddings is enabled. Use wllama.setOptions({ embeddings: false }) to disable it.');
+        }
         const req = { tokens };
         if (options.skipLogits) {
             req.skip_logits = true;
@@ -373,6 +392,7 @@ export class Wllama {
      * @returns the token ID and its detokenized value (which maybe an unfinished unicode)
      */
     async samplingSample() {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('sampling_sample', {});
         return {
             piece: new Uint8Array(result.piece),
@@ -384,6 +404,7 @@ export class Wllama {
      * @param tokens
      */
     async samplingAccept(tokens) {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('sampling_accept', { tokens });
         if (!result.success) {
             throw new Error('samplingAccept unknown error');
@@ -394,6 +415,7 @@ export class Wllama {
      * @param topK Get top K tokens having highest logits value. If topK == -1, we return all n_vocab logits, but this is not recommended because it's slow.
      */
     async getLogits(topK = 40) {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('get_logits', { top_k: topK });
         const logits = result.logits;
         return logits.map(([token, p]) => ({ token, p }));
@@ -404,6 +426,10 @@ export class Wllama {
      * @returns A list of number represents an embedding vector of N dimensions
      */
     async embeddings(tokens) {
+        this.checkModelLoaded();
+        if (!this.useEmbeddings) {
+            throw new Error('embeddings is disabled. Use wllama.setOptions({ embeddings: true }) to enable it.');
+        }
         const result = await this.proxy.wllamaAction('embeddings', { tokens });
         if (result.error) {
             throw new Error(result.error);
@@ -422,6 +448,7 @@ export class Wllama {
      * @param nDiscard
      */
     async kvRemove(nKeep, nDiscard) {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('kv_remove', {
             n_keep: nKeep,
             n_discard: nDiscard,
@@ -434,6 +461,7 @@ export class Wllama {
      * Clear all tokens in KV cache
      */
     async kvClear() {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('kv_clear', {});
         if (!result.success) {
             throw new Error('kvClear unknown error');
@@ -446,6 +474,7 @@ export class Wllama {
      * @returns List of tokens saved to the file
      */
     async sessionSave(filePath) {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('session_save', { session_path: filePath });
         return result;
     }
@@ -456,6 +485,7 @@ export class Wllama {
      *
      */
     async sessionLoad(filePath) {
+        this.checkModelLoaded();
         const result = await this.proxy.wllamaAction('session_load', { session_path: filePath });
         if (result.error) {
             throw new Error(result.error);
@@ -465,15 +495,26 @@ export class Wllama {
         }
     }
     /**
-     * Unload the model and free all memory
+     * Set options for underlaying llama_context
+     */
+    async setOptions(opt) {
+        this.checkModelLoaded();
+        await this.proxy.wllamaAction('set_options', opt);
+        this.useEmbeddings = opt.embeddings;
+    }
+    /**
+     * Unload the model and free all memory.
+     *
+     * Note: This function will NOT crash if model is not yet loaded
      */
     async exit() {
-        await this.proxy.wllamaExit();
+        await this.proxy?.wllamaExit();
     }
     /**
      * get debug info
      */
     async _getDebugInfo() {
+        this.checkModelLoaded();
         return await this.proxy.wllamaDebug();
     }
 }

@@ -95,6 +95,12 @@ export interface ModelMetadata {
     };
     meta: Record<string, string>;
 }
+export interface ContextOptions {
+    /**
+     * Allow switching between embeddings / generation mode. Useful for models like GritLM.
+     */
+    embeddings: boolean;
+}
 /**
  * Logger preset with debug messages suppressed
  */
@@ -122,11 +128,14 @@ export declare const LoggerWithoutDebug: {
 };
 export declare class Wllama {
     cacheManager: {
-        write(key: string, stream: ReadableStream<any>): Promise<void>;
-        open(key: string): Promise<ReadableStream<any> | null>;
-        getSize(key: string): Promise<number>;
+        getNameFromURL(url: string): Promise<string>;
+        write(name: string, stream: ReadableStream<any>): Promise<void>;
+        open(name: string): Promise<ReadableStream<any> | null>;
+        getSize(name: string): Promise<number>;
         list(): Promise<import("./cache-manager").CacheEntry[]>;
         clear(): Promise<void>;
+        delete(nameOrURL: string): Promise<void>;
+        deleteMany(predicate: (e: import("./cache-manager").CacheEntry) => boolean): Promise<void>;
     };
     private proxy;
     private config;
@@ -140,6 +149,11 @@ export declare class Wllama {
     private samplingConfig;
     constructor(pathConfig: AssetsPathConfig, wllamaConfig?: WllamaConfig);
     private logger;
+    private checkModelLoaded;
+    /**
+     * Check if the model is loaded via `loadModel()`
+     */
+    isModelLoaded(): boolean;
     /**
      * Get token ID associated to BOS (begin of sentence) token.
      *
@@ -318,7 +332,13 @@ export declare class Wllama {
      */
     sessionLoad(filePath: string): Promise<void>;
     /**
-     * Unload the model and free all memory
+     * Set options for underlaying llama_context
+     */
+    setOptions(opt: ContextOptions): Promise<void>;
+    /**
+     * Unload the model and free all memory.
+     *
+     * Note: This function will NOT crash if model is not yet loaded
      */
     exit(): Promise<void>;
     /**
